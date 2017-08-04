@@ -254,7 +254,7 @@ void parser(char **argvs) {
 			break;
 		}
 		if (res == 0) {
-			printf("timeout! \n");
+			//printf("timeout! \n");
 			continue;
 		}
 		if (check == 2 && pkt_data[21] != 2 && pkt_data[21] != 1) {
