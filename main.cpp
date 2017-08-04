@@ -283,14 +283,13 @@ int main(int argc, char *argv[]) {
 	int thr_id[2]; // error check variable
 	int status;
 
-	memcpy((char*)my_mac, get_macaddr(argv[1]), 6); // my_amc alloc
-
 	if (argc < 4) {  // argv exception
-		fprintf(stderr, "send_arp <interface> <sender ip> <target ip> \nexample : send_arp ens1 192.168.0.1 192.168.0.9");
+		fprintf(stderr, " send_arp <interface> <sender ip> <target ip> \t\n example : send_arp ens1 192.168.0.1 192.168.0.9\n example : send_arp ens1 192.168.0.1 192.168.0.9 -show\n");
 		exit(0);
 	}
 	if (argc == 5 && (strcmp(argv[4], "-show") == 0)) show_check = 1;
 
+	memcpy((char*)my_mac, get_macaddr(argv[1]), 6); // my_amc alloc
 	pcap_setting(argv); // pcap lib open
 
 	thr_id[0] = pthread_create(&pthread_arp_send, NULL, send_arp_thread, argv);
